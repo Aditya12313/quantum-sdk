@@ -165,9 +165,9 @@ print(f"10 random values: {values}")
 ```
 
 ### 9. Amplitude Estimation
-Quantum speedup for Monte Carlo estimation.  The SDK provides the **iterative
-(maximum-likelihood) variant**; the canonical QPE-based variant is planned but
-not yet implemented.
+Quantum speedup for Monte Carlo estimation.  The SDK provides both the
+**canonical QPE-based variant** (`AmplitudeEstimation`) and the **iterative
+(maximum-likelihood) variant** (`IterativeAmplitudeEstimation`).
 
 ```python
 from qpiai_quantum.algorithms.amplitude_estimation import (
@@ -193,10 +193,45 @@ amplitude = iae.estimate(problem, shots=2000)
 print(f"Estimated amplitude: {amplitude:.4f}")
 ```
 
-> **Note:** The canonical QPE-based `AmplitudeEstimation` class is not yet
-> available and raises `NotImplementedError`.  Use
-> `IterativeAmplitudeEstimation` for currently supported amplitude estimation
-> workflows.
+The canonical QPE-based variant estimates the amplitude from the phase
+measured on an evaluation register:
+
+```python
+from qpiai_quantum.algorithms.amplitude_estimation import (
+    AmplitudeEstimation,
+    EstimationProblem,
+)
+from qpiai_quantum.circuit import Circuit
+
+A = Circuit(1)
+A.ry(0, 0.8)
+problem = EstimationProblem(state_preparation=A, objective_qubits=[0])
+
+# More evaluation qubits gives finer phase resolution; 5 or more is recommended.
+qae = AmplitudeEstimation(num_evaluation_qubits=6)
+amplitude = qae.estimate(problem, shots=1000, device_name="QpiAI-QSV-Local")
+print(f"Estimated amplitude: {amplitude:.4f}")  # true value: sin^2(0.4) = 0.1516
+```
+
+`AmplitudeEstimation` honours a custom `is_good_state` predicate: it is
+enumerated over the state register and synthesized into an explicit oracle.
+That enumeration is supported for up to `AmplitudeEstimation.MAX_ORACLE_QUBITS`
+state qubits; problems using the default `objective_qubits` marking have no
+such limit.  `IterativeAmplitudeEstimation` does not yet build its Grover
+operator from the predicate, so custom predicates are not supported there:
+
+```python
+# Bitstrings are MSB first, so bitstring[-1] is qubit 0.
+B = Circuit(2)
+B.ry(0, 0.8)
+B.ry(1, 1.1)
+
+problem = EstimationProblem(
+    state_preparation=B,
+    objective_qubits=[0],
+    is_good_state=lambda bitstring: bitstring.count("1") == 1,  # exactly one qubit set
+)
+```
 
 ## Common Operations
 
@@ -359,7 +394,7 @@ for n in [2, 3, 4, 5]:
 - **Complexity**: O(1/ε) queries vs O(1/ε²) classical Monte Carlo
 - **Use Cases**: Option pricing, risk analysis, counting problems
 - **Key Feature**: Quadratic speedup for estimating expectation values
-- **Note**: Only the iterative (maximum-likelihood) variant is currently implemented. The canonical QPE-based variant is planned.
+- **Note**: Both the canonical QPE-based variant (`AmplitudeEstimation`) and the iterative (maximum-likelihood) variant (`IterativeAmplitudeEstimation`) are implemented. Custom `is_good_state` predicates are currently supported by the canonical variant only.
 
 ## Performance Tips
 
